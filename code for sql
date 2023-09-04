@@ -1,1 +1,214 @@
+-- music store data analysis
+-- set 1
+--q1. senior most employee based on job title
+SELECT * FROM employee; 
+-- to scan for levels
+SELECT * 
+FROM employee
+order by levels; 
+-- to limit only one
+SELECT * 
+FROM employee
+order by levels LIMIT 1;
+
+--q2. which countries have most invoices?
+SELECT * 
+FROM invoice
+--
+SELECT COUNT(*), billing_country --the count functions counts the total number of rows in a table, here we have specified billing_country 
+FROM invoice
+GROUP BY billing_country --to group all answer within the same country into a single group
+
+--
+SELECT COUNT (*) billing_country --the count functions counts the total number of rows in a table, here we have specified billing_country 
+FROM invoice -- IF WE DO NOT ADD GROUP BY (country) we get total no of billing coutnries in a single row
+
+-- to create new coloumn c, showing invoices, arranged by order by
+SELECT COUNT(*) as c, billing_country --the count functions counts the total number of rows in a table, here we have specified billing_country 
+FROM invoice
+GROUP BY billing_country
+order by c Desc
+
+
+--q3 what are top 3 values of total invoice
+SELECT * 
+FROM invoice
+
+SELECT total as T
+From invoice
+order by T DESC limit 3
+
+--q4 Which city has the best customers? We would like to throw a promotional Music
+Festival in the city we made the most money. Write a query that returns one city that
+has the highest sum of invoice totals. Return both the city name & sum of all invoice
+totals--
+
+SELECT * FROM invoice
+
+SELECT SUM(total) as invoice_total, billing_city -- the sum(total)  It calculates the sum of the "total" column for each group of records with the same "billing_city" value and gives it the alias "invoice_total. billing _city is as it is
+from invoice
+group by billing_city
+order by invoice_total desc
+
+
+--q5 Who is the best customer? The customer who has spent the most money will be
+declared the best customer. Write a query that returns the person who has spent the
+most money
+
+SELECT * FROM customer
+
+
+
+--note that customer table doesnt have any invoice details, here we have to connect between two tables
+-- refere schema for this
+--here customer and invoice is nedeed
+
+SELECT customer.customer_id, customer.first_name, customer.last_name, sum(invoice.total) as total
+From customer
+join invoice on customer.customer_id =invoice.customer_id --This is a SQL JOIN operation that connects the "customer" table with the "invoice" table using the "customer_id" column as the common key. It links customer information with their corresponding invoices.
+group by customer.customer_id -- This clause groups the results by the "customer_id" column from the "customer" table. It means that all invoices for the same customer will be combined into one row in the result set.
+order by total desc 
+limit 1
+
+
+--set 2
+--1. Write query to return the email, first name, last name, & Genre of all Rock Music
+--listeners. Return your list ordered alphabetically by email starting with A
+
+-- always refer scheme, here the schema is in the order customer>invoice>invoice_line>track>genre
+-- first we select details from customer
+--hint always create inner query first
+
+Select distinct email, first_name, last_name
+from customer
+join invoice on customer.customer_id = invoice.customer_id
+join invoiceline on invoice.invoice_id = invoiceline.invoice_id
+-- we create an inner query here to choose only rock genre
+WHERE track_id in(
+	select track_id from track -- chooose track id from track
+	join genre on track.genre_id = genre.genre_id -- join to genre
+	where genre.name like 'Rock' -- the like can also be used as equal sign
+)
+order by email;
+
+-- q2 Let's invite the artists who have written the most rock music in our dataset. Write a
+--query returns the Artist name and total track count of the top 10 rock bands
+-- here artist>album>track
+
+select artist.artist_id, artist.name, count(artist.artist_id) as number_of_songs
+from track--centre table is track table, where we can join genre and artist
+join album on album.album_id = track.album_id
+join artist on artist.artist_id = album.artist_id
+join genre on genre.genre_id = track.genre_id
+where genre.name like 'Rock'
+group by artist.artist_id
+order by number_of_songs desc
+limit 10
+
+---q3 Return all the track names that have a song length longer than the average song length.
+Return the Name and Milliseconds for each track. Order by the song length with the
+longest songs listed first
+-- here the main thing is the schema 
+--track contains milli second
+- this can be done in two step
+-- this will become iner query
+
+select avg(milliseconds) as avg_track_length
+from track
+
+--the output is 393599.2121..... so step 2 is
+
+select name, milliseconds
+from track
+where milliseconds > (
+	select avg(milliseconds) as avg_track_length
+	from track)
+order by milliseconds desc
+
+-- or we can do this
+
+select name, milliseconds
+from track
+where milliseconds > 393599 ----(greater than avergae)
+order by milliseconds desc
+
+-- stage 3
+-- useful for breaking down the questions
+-- 1 Find how much amount spent by each customer on artists? Write a query to return
+customer name, artist name and total spent
+-- all three are from different tables, so we have to join. refere schema
+-- trikcy part here is total spent is not total under invoice (invoice.total) but
+-- it is infact quantity * unit price under invoiceline table
+-- WITH Clause is used for creating temporary tables./cte or common table expression/
+
+WITH best_selling_artist AS (
+	SELECT artist.artist_id AS artist_id, artist.name AS artist_name, 
+	SUM(invoice_line.unit_price*invoice_line.quantity) AS total_sales
+	FROM invoice_line
+	-- the next joins enable to collect artist id and album id
+	JOIN track ON track.track_id = invoice_line.track_id
+	JOIN album ON album.album_id = track.album_id
+	JOIN artist ON artist.artist_id = album.artist_id
+	GROUP BY 1 -- This groups the result set by the first column in the SELECT clause, which is artist_id. This means that the query will calculate the total sales for each unique artist.
+	ORDER BY 3 DESC -- This orders the grouped results by the third column in the SELECT clause, which is total_sales, in descending order (from highest to lowest sales).
+	LIMIT 1
+)
+-- the c is the customer table
+SELECT c.customer_id, c.first_name, c.last_name, bsa.artist_name, SUM(il.unit_price*il.quantity) AS amount_spent
+FROM invoice i
+-- customer table is specified as c here
+JOIN customer c ON c.customer_id = i.customer_id
+JOIN invoice_line il ON il.invoice_id = i.invoice_id
+JOIN track t ON t.track_id = il.track_id
+JOIN album alb ON alb.album_id = t.album_id
+JOIN best_selling_artist bsa ON bsa.artist_id = alb.artist_id
+GROUP BY 1,2,3,4
+ORDER BY 5 DESC;
+
+
+--q2 We want to find out the most popular music Genre for each country. We determine the
+most popular genre as the genre with the highest amount of purchases. Write a query
+that returns each country along with the top Genre. For countries where the maximum
+number of purchases is shared return all Genres
+
+-- using cte
+--here they are asking for count
+--
+
+WITH popular_genre AS 
+(
+    SELECT COUNT(invoice_line.quantity) AS purchases, customer.country, genre.name, genre.genre_id, 
+	-- the next lines, ROW NUMBER is used in the format
+	--ROW_NUMBER() OVER (PARTITION BY partition_expression ORDER BY sort_expression)
+	--ROW Number in this case, is used for ranking each country in a ranked order
+	ROW_NUMBER() OVER(PARTITION BY customer.country ORDER BY COUNT(invoice_line.quantity) DESC) AS RowNo 
+    FROM invoice_line 
+	JOIN invoice ON invoice.invoice_id = invoice_line.invoice_id
+	JOIN customer ON customer.customer_id = invoice.customer_id
+	JOIN track ON track.track_id = invoice_line.track_id
+	JOIN genre ON genre.genre_id = track.genre_id
+	GROUP BY 2,3,4
+	--- order by 2, i.e country, and sort by purchases
+	ORDER BY 2 ASC, 1 DESC
+)
+SELECT * FROM popular_genre WHERE RowNo <= 1
+
+-- q3
+--  Write a query that determines the customer that has spent the most on music for each
+country. Write a query that returns the country along with the top customer and how
+much they spent. For countries where the top amount spent is shared, provide all
+customers who spent this amount
+--with cte/with statement
+
+WITH Customter_with_country AS (
+		SELECT customer.customer_id,first_name,last_name,billing_country,SUM(total) AS total_spending,
+	    ROW_NUMBER() OVER(PARTITION BY billing_country ORDER BY SUM(total) DESC) AS RowNo 
+		FROM invoice
+		JOIN customer ON customer.customer_id = invoice.customer_id
+		GROUP BY 1,2,3,4
+		ORDER BY 4 ASC,5 DESC)
+SELECT * FROM Customter_with_country WHERE RowNo <= 1
+
+
+
 
